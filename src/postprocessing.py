@@ -1,10 +1,26 @@
 import pandas as pd
 from glob import glob
 import matplotlib.pyplot as plt
-from datetime import datetime
 import numpy as np
+from scipy.signal import butter, filtfilt
+import os
+import re
+from datetime import datetime, timedelta, timezone
 
 from sciopy.doteit import convert_fulldir_doteit_to_npz
+
+### Filtering
+
+
+def lowpass_filter(data, cutoff=2, fs=100, order=4):
+    nyquist = 0.5 * fs
+    normal_cutoff = cutoff / nyquist
+    b, a = butter(order, normal_cutoff, btype="low", analog=False)
+    filtered_signal = filtfilt(b, a, data)
+    return filtered_signal
+
+
+### Classes
 
 
 def renderDF(filename):
@@ -87,7 +103,7 @@ class IsoforceIso:
         tks = np.round(np.linspace(np.min(self.torque), np.max(self.torque), 5))
 
         plt.figure(figsize=(12, 3))
-        plt.plot(self.torque)
+        plt.plot(self.torque, "C0")
         plt.grid()
         # plt.yticks(ticks=tks, labels=tks)
         plt.xlabel("sample $k$")
@@ -114,7 +130,7 @@ class IsoforceIso:
         plt.grid()
         plt.xlabel("sample $k$")
         plt.ylabel("Velocity")
-        plt.legend()
+        plt.legend(loc="upper left")
         plt.show()
 
     def plot_data(self, filename=None):
@@ -128,7 +144,7 @@ class IsoforceIso:
         plt.scatter(
             self.stop_idxs, self.velocity[self.stop_idxs], c="C3", label="stop idxs"
         )
-        plt.legend()
+        plt.legend(loc="upper left")
         plt.grid()
         plt.xlabel("sample $k$")
         if filename != None:
@@ -159,3 +175,131 @@ def process_sciospec_eit(part_path):
             eit=mat,
             timestamp=convert_timestamp(tmp_eit["date_time"].tolist()),
         )
+
+
+### Process Python Isoforce data
+
+
+def extract_timestamp_and_sample(filename):
+    # Function to extract timestamp and sample number from filename
+    match = re.search(r"_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_(\d+)\.npz$", filename)
+    if match:
+        timestamp_str = match.group(1)  # Extract the timestamp
+        sample_number = int(match.group(2))  # Extract the sample number
+        timestamp = datetime.strptime(
+            timestamp_str, "%Y-%m-%d_%H-%M-%S"
+        )  # Convert to datetime
+        return (timestamp, sample_number)
+    return (None, None)
+
+
+class IsoforcePy:
+    def __init__(self, path, LP_filter=True, over_UTC=False):
+        """
+        path ... part_path.isoforce_py_raw.
+        LP_filter ... Low-pass filter the torque data.
+        over_UTC ... plot over the measured time stamps.
+        """
+        self.path = path
+        self.LP_filter = LP_filter
+        self.over_UTC = over_UTC
+        self.init_data()
+
+    def init_data(self):
+        # Initialize lists to store aggregated data
+        all_position = list()  # channel 1
+        all_torque = list()  # channel 2
+        all_speed = list()  # channel 3
+        all_time = list()
+
+        file_list = sorted(
+            [f for f in os.listdir(self.path) if f.endswith(".npz")],
+            key=lambda f: (extract_timestamp_and_sample(f)),
+        )
+
+        last_file_for_timestamp = dict()
+
+        for file_name in file_list:
+            timestamp, sample_number = extract_timestamp_and_sample(file_name)
+            last_file_for_timestamp[timestamp] = (
+                file_name  # Overwrite with the latest file
+            )
+
+        for timestamp, last_file in last_file_for_timestamp.items():
+            file_path = os.path.join(self.path, last_file)
+            data = np.load(file_path, allow_pickle=True)
+
+            # Extract the data for the last file of this timestamp
+            ch_1, ch_2, ch_3 = data["data"]
+            assert len(ch_1) == len(ch_2) == len(ch_3)
+
+            timestamps_start = data["timestamps_start"]
+            timestamps = data["timestamps_current"]
+            sampling_rate = data["sampling_rate"]
+
+            # Expand timestamps for the last sample file
+            timestamps_expanded = [
+                timestamp + timedelta(seconds=(i / sampling_rate))
+                for i in range(len(ch_1))
+            ]
+
+            # Append the torque and time data
+            all_position.extend(ch_1)
+            all_torque.extend(ch_2)
+            all_speed.extend(ch_3)
+            all_time.extend(timestamps_expanded)
+
+        self.all_position = np.array(all_position)
+        if self.LP_filter == True:
+            self.all_torque_LP = lowpass_filter(all_torque)
+        self.all_torque = np.array(all_torque)
+        self.all_speed = np.array(all_speed)
+
+        assert len(all_position) == len(all_torque) == len(all_speed)
+        if self.over_UTC == False:
+            self.all_time = np.arange(len(all_time))
+
+    def plot_angle(self):
+        plt.figure(figsize=(12, 3))
+        plt.plot(self.all_time, self.all_position, label="Position", color="C3")
+        if self.over_UTC == False:
+            plt.xlabel("sample $k$")
+        else:
+            plt.xlabel("Time (UTC)")
+        plt.ylabel("Position")
+        plt.grid(True)
+        plt.legend(loc="upper left")
+        plt.tight_layout()
+        plt.show()
+
+    def plot_torque(self):
+        plt.figure(figsize=(12, 3))
+        if self.LP_filter == True:
+            plt.plot(
+                self.all_time, self.all_torque, "--", label="Torque raw", color="C0"
+            )
+            plt.plot(self.all_time, self.all_torque_LP, label="Torque LP", color="C9")
+        else:
+            plt.plot(self.all_time, self.all_torque, label="Torque raw", color="C0")
+        if self.over_UTC == False:
+            plt.xlabel("sample $k$")
+        else:
+            plt.xlabel("Time (UTC)")
+        plt.ylabel("Torque (Nm)")
+        plt.grid(True)
+        plt.legend(loc="upper left")
+        plt.tight_layout()
+        plt.show()
+
+    def plot_velocity(self):
+        plt.figure(figsize=(12, 3))
+        plt.plot(self.all_time, self.all_speed, label="Speed", color="C8")
+        if self.over_UTC == False:
+            plt.xlabel("sample $k$")
+        else:
+            plt.xlabel("Time (UTC)")
+        plt.ylabel("Speed (°/s)")
+        plt.grid(True)
+        plt.legend(loc="upper left")
+        plt.tight_layout()
+        plt.show()
