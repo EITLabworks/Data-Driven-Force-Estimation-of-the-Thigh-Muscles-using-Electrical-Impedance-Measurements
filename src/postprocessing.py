@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from sciopy.doteit import convert_fulldir_doteit_to_npz
 
-### Filtering
+### Filtering - LP filter
 
 
 def lowpass_filter(data, cutoff=2, fs=100, order=4):
@@ -20,28 +20,23 @@ def lowpass_filter(data, cutoff=2, fs=100, order=4):
     return filtered_signal
 
 
-### Classes
+### Scaling
 
 
-def renderDF(filename):
-    DF = pd.read_csv(filename, delimiter="\t", header=0, skip_blank_lines=True)
-    DF = pd.DataFrame(DF)
+def scale_to_range(values, new_min=0, new_max=1):
+    old_min = np.min(values)
+    old_max = np.max(values)
 
-    for rnms in DF.columns:
-        DF.rename(columns={rnms: rnms.split(" ")[0]}, inplace=True)
+    def scale(value):
+        return new_min + (value - old_min) * (new_max - new_min) / (old_max - old_min)
 
-    DF = DF.loc[:, ~DF.columns.str.contains("^Unnamed")]
-    DF = DF.dropna(how="all")
-    return DF
-
-
-def convert_timestamp(date_str):
-    if len(str(date_str).split(".")) > 2:
-        timestamp = datetime.strptime(date_str, "%Y.%m.%d. %H:%M:%S.%f")
-        return timestamp.timestamp()
+    if isinstance(values, (list, tuple)):
+        return type(values)(scale(value) for value in values)
     else:
-        date_time = datetime.fromtimestamp(float(date_str))
-        return date_time.strftime("%Y.%m.%d. %H:%M:%S.%f")
+        return scale(values)
+
+
+### Class for the directory which is post-processed
 
 
 class ProcessingDir:
@@ -67,21 +62,61 @@ class ProcessingDir:
         print(f"Preprocessed sciospec EIT samples:\n\t{self.s_path_eit=}")
 
 
+### Process raw Isoforce data recorded with the Isoforce
+
+
+def renderDF(filename):
+    DF = pd.read_csv(filename, delimiter="\t", header=0, skip_blank_lines=True)
+    DF = pd.DataFrame(DF)
+
+    for rnms in DF.columns:
+        DF.rename(columns={rnms: rnms.split(" ")[0]}, inplace=True)
+
+    DF = DF.loc[:, ~DF.columns.str.contains("^Unnamed")]
+    DF = DF.dropna(how="all")
+    return DF
+
+
+def convert_timestamp(date_str):
+    if len(str(date_str).split(".")) > 2:
+        timestamp = datetime.strptime(date_str, "%Y.%m.%d. %H:%M:%S.%f")
+        return timestamp.timestamp()
+    else:
+        date_time = datetime.fromtimestamp(float(date_str))
+        return date_time.strftime("%Y.%m.%d. %H:%M:%S.%f")
+
+
 def conv_array_float(arr):
     return np.array([float(x.replace(",", ".")) for x in arr])
 
 
-class IsoforceIso:
-    def __init__(self, DF):
-        self.torque = conv_array_float(DF["Torque"])
-        self.angle = conv_array_float(DF["Angle"])
-        self.direction = DF["Direction"]
-        self.mode = DF["Mode"]
-        self.velocity = conv_array_float(DF["Velocity"])
-        self.record = DF["Record"]
+### Isoforce Class
 
+
+class IsoforceIso:
+    def __init__(self, DF, LP_filter=False):
+
+        self.DF = DF
+        self.LP_filter = LP_filter
+
+        self.init_data()
         self.detect_start_stop_idxs()
         self.export_torque_segments()
+        self.filter_torque()
+
+    def init_data(self):
+
+        self.torque_raw = conv_array_float(self.DF["Torque"])
+        if self.LP_filter:
+            print("!!!The torque data was LP filtered!!!")
+            self.torque = lowpass_filter(self.torque_raw)
+        else:
+            self.torque = self.torque_raw
+        self.angle = conv_array_float(self.DF["Angle"])
+        self.direction = self.DF["Direction"]
+        self.mode = self.DF["Mode"]
+        self.velocity = conv_array_float(self.DF["Velocity"])
+        self.record = self.DF["Record"]
 
     def detect_start_stop_idxs(self):
         # use the velocity edges for start and stop times
@@ -89,23 +124,36 @@ class IsoforceIso:
         dx_dk = np.gradient(self.velocity, k)
         self.start_idxs = np.where(dx_dk > np.mean(dx_dk))[0][1::2]
         self.stop_idxs = np.where(dx_dk < -np.mean(dx_dk))[0][::2]
+        # length quality check
+        to_short = np.where(self.stop_idxs - self.start_idxs < 1000)[0]
+        to_long = np.where(self.stop_idxs - self.start_idxs > 2500)[0]
+        cut_out = np.concatenate([to_short, to_long])
+        self.stop_idxs = np.delete(self.stop_idxs, cut_out)
+        self.start_idxs = np.delete(self.start_idxs, cut_out)
 
     def export_torque_segments(self):
         idx = 0
         segment_dict = dict()
+        exclude_window = np.zeros(len(self.velocity))
         for start, stop in zip(self.start_idxs, self.stop_idxs):
             segment_dict[f"seg_{idx}"] = self.torque[start:stop]
+            exclude_window[start:stop] = 1
             idx += 1
 
+        self.exclude_window = exclude_window
         self.torque_segments = segment_dict
+
+    def filter_torque(self):
+        self.torque_seg = self.torque * self.exclude_window
 
     def plot_torque(self):
         tks = np.round(np.linspace(np.min(self.torque), np.max(self.torque), 5))
 
         plt.figure(figsize=(12, 3))
-        plt.plot(self.torque, "C0")
+        plt.plot(self.torque_seg, "C0", label="Cleared Segments")
+        plt.plot(self.torque, "C8", lw=0.5, label="raw")
         plt.grid()
-        # plt.yticks(ticks=tks, labels=tks)
+        plt.legend()
         plt.xlabel("sample $k$")
         plt.ylabel("Torque (NM)")
         plt.show()
@@ -151,6 +199,9 @@ class IsoforceIso:
             plt.tight_layout()
             plt.savefig(filename)
         plt.show()
+
+
+### Python data processing
 
 
 def process_sciospec_eit(part_path):
