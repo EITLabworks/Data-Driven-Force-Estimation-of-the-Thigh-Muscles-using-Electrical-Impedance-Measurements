@@ -105,23 +105,24 @@ class IsoforceIso:
         self.filter_torque()
 
     def init_data(self):
-
-        self.torque_raw = conv_array_float(self.DF["Torque"])
-        if self.LP_filter:
-            print("!!!The torque data was LP filtered!!!")
-            self.torque = lowpass_filter(self.torque_raw)
-        else:
-            self.torque = self.torque_raw
+        # read raw torque data
         self.angle = conv_array_float(self.DF["Angle"])
-        self.direction = self.DF["Direction"]
-        self.mode = self.DF["Mode"]
-        self.velocity = conv_array_float(self.DF["Velocity"])
-        self.record = self.DF["Record"]
+        self.speed = conv_array_float(self.DF["Velocity"])
+        torque_raw = conv_array_float(self.DF["Torque"])
+        if self.LP_filter:
+            print("!!!The torque data is lowpass filtered!!!")
+            self.torque_raw = lowpass_filter(torque_raw)
+        else:
+            self.torque_raw = torque_raw
+        # unused:
+        # self.record = self.DF["Record"]
+        # self.direction = self.DF["Direction"]
+        # self.mode = self.DF["Mode"]
 
     def detect_start_stop_idxs(self):
-        # use the velocity edges for start and stop times
-        k = np.arange(len(self.velocity))
-        dx_dk = np.gradient(self.velocity, k)
+        # use the speed edges for start and stop times
+        k = np.arange(len(self.speed))
+        dx_dk = np.gradient(self.speed, k)
         self.start_idxs = np.where(dx_dk > np.mean(dx_dk))[0][1::2]
         self.stop_idxs = np.where(dx_dk < -np.mean(dx_dk))[0][::2]
         # length quality check
@@ -134,9 +135,9 @@ class IsoforceIso:
     def export_torque_segments(self):
         idx = 0
         segment_dict = dict()
-        exclude_window = np.zeros(len(self.velocity))
+        exclude_window = np.zeros(len(self.speed))
         for start, stop in zip(self.start_idxs, self.stop_idxs):
-            segment_dict[f"seg_{idx}"] = self.torque[start:stop]
+            segment_dict[f"seg_{idx}"] = self.torque_raw[start:stop]
             exclude_window[start:stop] = 1
             idx += 1
 
@@ -144,57 +145,60 @@ class IsoforceIso:
         self.torque_segments = segment_dict
 
     def filter_torque(self):
-        self.torque_seg = self.torque * self.exclude_window
+        self.torque = self.torque_raw * self.exclude_window
+
+    def plot_angle(self):
+        """P -> angle"""
+        plt.figure(figsize=(12, 3))
+        plt.plot(self.angle, "C3")
+        plt.grid()
+        plt.xlabel("sample ($k$)")
+        plt.ylabel("Angle (°)")
+        plt.show()
 
     def plot_torque(self):
-        tks = np.round(np.linspace(np.min(self.torque), np.max(self.torque), 5))
+        """T -> torque"""
+        tks = np.round(np.linspace(np.min(self.torque_raw), np.max(self.torque_raw), 5))
 
         plt.figure(figsize=(12, 3))
-        plt.plot(self.torque_seg, "C0", label="Cleared Segments")
-        plt.plot(self.torque, "C8", lw=0.5, label="raw")
+        plt.plot(self.torque, "C0", label=".torque")
+        plt.plot(self.torque_raw, "C8", lw=0.5, label=".torque_raw")
         plt.grid()
         plt.legend()
-        plt.xlabel("sample $k$")
+        plt.xlabel("sample ($k$)")
         plt.ylabel("Torque (NM)")
         plt.show()
 
-    def plot_angle(self):
+    def plot_speed(self):
+        """S -> speed"""
         plt.figure(figsize=(12, 3))
-        plt.plot(self.angle)
-        plt.grid()
-        plt.xlabel("sample $k$")
-        plt.ylabel("Angle")
-        plt.show()
-
-    def plot_velocity(self):
-        plt.figure(figsize=(12, 3))
-        plt.plot(self.velocity)
+        plt.plot(self.speed, "C8")
         plt.scatter(
-            self.start_idxs, self.velocity[self.start_idxs], c="C2", label="start idx"
+            self.start_idxs, self.speed[self.start_idxs], c="C2", label="start idx"
         )
         plt.scatter(
-            self.stop_idxs, self.velocity[self.stop_idxs], c="C3", label="stop idxs"
+            self.stop_idxs, self.speed[self.stop_idxs], c="C3", label="stop idxs"
         )
         plt.grid()
-        plt.xlabel("sample $k$")
-        plt.ylabel("Velocity")
+        plt.xlabel("sample ($k$)")
+        plt.ylabel("Speed (°/s)")
         plt.legend(loc="upper left")
         plt.show()
 
     def plot_data(self, filename=None):
         plt.figure(figsize=(12, 3))
-        plt.plot(self.torque, label="Torque")
-        plt.plot(self.angle / 2, label="Angle / 2")
-        plt.plot(self.velocity, label="Velocity")
+        plt.plot(self.angle, "C3", label="Angle")
+        plt.plot(self.torque, "C0", label="Torque")
+        plt.plot(self.speed, "C8", label="Speed")
         plt.scatter(
-            self.start_idxs, self.velocity[self.start_idxs], c="C2", label="start idx"
+            self.start_idxs, self.speed[self.start_idxs], c="C2", label="start idx"
         )
         plt.scatter(
-            self.stop_idxs, self.velocity[self.stop_idxs], c="C3", label="stop idxs"
+            self.stop_idxs, self.speed[self.stop_idxs], c="C4", label="stop idxs"
         )
         plt.legend(loc="upper left")
         plt.grid()
-        plt.xlabel("sample $k$")
+        plt.xlabel("sample ($k$)")
         if filename != None:
             plt.tight_layout()
             plt.savefig(filename)
@@ -258,10 +262,10 @@ class IsoforcePy:
 
     def init_data(self):
         # Initialize lists to store aggregated data
-        all_position = list()  # channel 1
-        all_torque = list()  # channel 2
-        all_speed = list()  # channel 3
-        all_time = list()
+        angle = list()  # channel 1
+        torque = list()  # channel 2
+        speed = list()  # channel 3
+        time = list()
 
         file_list = sorted(
             [f for f in os.listdir(self.path) if f.endswith(".npz")],
@@ -295,26 +299,29 @@ class IsoforcePy:
             ]
 
             # Append the torque and time data
-            all_position.extend(ch_1)
-            all_torque.extend(ch_2)
-            all_speed.extend(ch_3)
-            all_time.extend(timestamps_expanded)
+            angle.extend(ch_1)
+            torque.extend(ch_2)
+            speed.extend(ch_3)
+            time.extend(timestamps_expanded)
 
-        self.all_position = np.array(all_position)
+        # set class variables
+        self.angle = np.array(angle)
+        self.torque_raw = np.array(torque)
         if self.LP_filter == True:
-            self.all_torque_LP = lowpass_filter(all_torque)
-        self.all_torque = np.array(all_torque)
-        self.all_speed = np.array(all_speed)
+            self.torque = lowpass_filter(self.torque_raw)
+        self.speed = np.array(speed)
 
-        assert len(all_position) == len(all_torque) == len(all_speed)
-        if self.over_UTC == False:
-            self.all_time = np.arange(len(all_time))
+        assert len(angle) == len(torque) == len(speed)
+        if self.over_UTC:
+            self.time = np.array(time)
+        else:
+            self.time = np.arange(len(time))
 
     def plot_angle(self):
         plt.figure(figsize=(12, 3))
-        plt.plot(self.all_time, self.all_position, label="Position", color="C3")
+        plt.plot(self.time, self.angle, label="Position", color="C3")
         if self.over_UTC == False:
-            plt.xlabel("sample $k$")
+            plt.xlabel("sample ($k$)")
         else:
             plt.xlabel("Time (UTC)")
         plt.ylabel("Position")
@@ -325,15 +332,11 @@ class IsoforcePy:
 
     def plot_torque(self):
         plt.figure(figsize=(12, 3))
-        if self.LP_filter == True:
-            plt.plot(
-                self.all_time, self.all_torque, "--", label="Torque raw", color="C0"
-            )
-            plt.plot(self.all_time, self.all_torque_LP, label="Torque LP", color="C9")
-        else:
-            plt.plot(self.all_time, self.all_torque, label="Torque raw", color="C0")
+        plt.plot(self.time, self.torque, "C0", label=".torque")
+        plt.plot(self.time, self.torque_raw, "C5", lw=0.5, label=".torque_raw")
+
         if self.over_UTC == False:
-            plt.xlabel("sample $k$")
+            plt.xlabel("sample ($k$)")
         else:
             plt.xlabel("Time (UTC)")
         plt.ylabel("Torque (Nm)")
@@ -342,11 +345,11 @@ class IsoforcePy:
         plt.tight_layout()
         plt.show()
 
-    def plot_velocity(self):
+    def plot_speed(self):
         plt.figure(figsize=(12, 3))
-        plt.plot(self.all_time, self.all_speed, label="Speed", color="C8")
+        plt.plot(self.time, self.speed, label="Speed", color="C8")
         if self.over_UTC == False:
-            plt.xlabel("sample $k$")
+            plt.xlabel("sample ($k$)")
         else:
             plt.xlabel("Time (UTC)")
         plt.ylabel("Speed (°/s)")
