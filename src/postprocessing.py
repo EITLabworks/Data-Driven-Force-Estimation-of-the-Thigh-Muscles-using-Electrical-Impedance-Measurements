@@ -2,7 +2,7 @@ import pandas as pd
 from glob import glob
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import butter, filtfilt
+from scipy.signal import butter, filtfilt, find_peaks
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -34,6 +34,23 @@ def scale_to_range(values, new_min=0, new_max=1):
         return type(values)(scale(value) for value in values)
     else:
         return scale(values)
+
+
+### Edge detection
+
+
+def edge_detection(signal, mode="rising", threshold=1):
+    """
+    mode = "rising" ... rising edge detection.
+    mode = "falling" ... falling edge detection.
+    """
+    signal = np.asarray(signal)
+    diff = np.diff(signal)
+    if mode == "rising":
+        rising_edges = np.where(diff == threshold)[0]
+    elif mode == "falling":
+        rising_edges = np.where(diff == -threshold)[0]
+    return rising_edges
 
 
 ### Class for the directory which is post-processed
@@ -101,7 +118,7 @@ class IsoforceIso:
 
         self.init_data()
         self.detect_start_stop_idxs()
-        self.export_torque_segments()
+        self.export_segments()
         self.filter_torque()
 
     def init_data(self):
@@ -112,6 +129,8 @@ class IsoforceIso:
         if self.LP_filter:
             print("!!!The torque data is lowpass filtered!!!")
             self.torque_raw = lowpass_filter(torque_raw)
+            print("!!!The angle data is lowpass filtered!!!")
+            self.angle = lowpass_filter(self.angle, cutoff=2, fs=400)
         else:
             self.torque_raw = torque_raw
         # unused:
@@ -132,17 +151,20 @@ class IsoforceIso:
         self.stop_idxs = np.delete(self.stop_idxs, cut_out)
         self.start_idxs = np.delete(self.start_idxs, cut_out)
 
-    def export_torque_segments(self):
+    def export_segments(self):
         idx = 0
-        segment_dict = dict()
+        T_segment_dict = dict()
+        A_segment_dict = dict()
         exclude_window = np.zeros(len(self.speed))
         for start, stop in zip(self.start_idxs, self.stop_idxs):
-            segment_dict[f"seg_{idx}"] = self.torque_raw[start:stop]
+            T_segment_dict[f"T_seg_{idx}"] = self.torque_raw[start:stop]
+            A_segment_dict[f"A_seg_{idx}"] = self.angle[start:stop]
             exclude_window[start:stop] = 1
             idx += 1
 
         self.exclude_window = exclude_window
-        self.torque_segments = segment_dict
+        self.angle_segments = A_segment_dict
+        self.torque_segments = T_segment_dict
 
     def filter_torque(self):
         self.torque = self.torque_raw * self.exclude_window
@@ -249,16 +271,33 @@ def extract_timestamp_and_sample(filename):
 
 
 class IsoforcePy:
-    def __init__(self, path, LP_filter=True, over_UTC=False):
+    def __init__(
+        self,
+        path,
+        LP_filter=True,
+        over_UTC=False,
+        scale_0_1=True,
+        speed_window_trunc=True,
+        phase_shift=0,
+    ):
         """
         path ... part_path.isoforce_py_raw.
-        LP_filter ... Low-pass filter the torque data.
+        LP_filter ... low-pass filter the torque data.
         over_UTC ... plot over the measured time stamps.
+        scale_0_1 ... scale all analog measured values between 0 and 1.
+        speed_window_trunc ... create a speed window.
+        phase_shift ... time index phase shift between Isoforce and Python (heuristic).
         """
         self.path = path
         self.LP_filter = LP_filter
         self.over_UTC = over_UTC
+        self.speed_window_trunc = speed_window_trunc
+        self.scale_0_1 = scale_0_1
+        self.phase_shift = phase_shift
+
         self.init_data()
+        self.export_segments()
+        self.filter_torque()
 
     def init_data(self):
         # Initialize lists to store aggregated data
@@ -309,22 +348,72 @@ class IsoforcePy:
         self.torque_raw = np.array(torque)
         if self.LP_filter == True:
             self.torque = lowpass_filter(self.torque_raw)
+        else:
+            self.torque = self.torque_raw
         self.speed = np.array(speed)
 
+        if self.scale_0_1:
+            self.angle = scale_to_range(self.angle)
+            self.torque = scale_to_range(self.torque)
+            self.torque_raw = scale_to_range(self.torque_raw)
+            self.speed = scale_to_range(self.speed)
+
+        if self.speed_window_trunc:
+            speed_window = self.speed
+            speed_window[self.speed <= 0.95] = 0
+            speed_window[self.speed > 0.5] = 1
+            self.speed_window = speed_window
+
         assert len(angle) == len(torque) == len(speed)
-        if self.over_UTC:
-            self.time = np.array(time)
-        else:
-            self.time = np.arange(len(time))
+        self.time = np.array(time)
+
+    def export_segments(self, distance=500, height=0.8):
+        idx = 0
+        T_segment_dict = dict()
+        A_segment_dict = dict()
+
+        self.stop_idxs, _ = find_peaks(self.angle, distance=distance, height=height)
+
+        start_detected = edge_detection(self.speed)
+        start_filt = list()
+        for stop in self.stop_idxs:
+            diff = stop - start_detected
+            min_diff = np.argmin(diff[diff > 0])
+            start_filt.append(start_detected[min_diff])
+        self.start_idxs = np.array(start_filt) - self.phase_shift
+
+        # exclude all segments that are shorter than 300 sample (~3s)
+        len_mask = self.stop_idxs - self.start_idxs > 300
+        self.start_idxs = self.start_idxs[len_mask]
+        self.stop_idxs = self.stop_idxs[len_mask]
+
+        assert (
+            self.start_idxs.shape == self.stop_idxs.shape
+        ), "Error during segment detection."
+
+        exclude_window = np.zeros(len(self.torque))
+        for start, stop in zip(self.start_idxs, self.stop_idxs):
+            T_segment_dict[f"T_seg_{idx}"] = self.torque[start:stop]
+            A_segment_dict[f"A_seg_{idx}"] = self.angle[start:stop]
+            exclude_window[start:stop] = 1
+            idx += 1
+
+        self.angle_segments = A_segment_dict
+        self.torque_segments = T_segment_dict
+        self.exclude_window = exclude_window
+
+    def filter_torque(self):
+        self.torque = self.torque * self.exclude_window
 
     def plot_angle(self):
         plt.figure(figsize=(12, 3))
-        plt.plot(self.time, self.angle, label="Position", color="C3")
-        if self.over_UTC == False:
-            plt.xlabel("sample ($k$)")
-        else:
+        if self.over_UTC:
+            plt.plot(self.time, self.angle, label="Angle", color="C3")
             plt.xlabel("Time (UTC)")
-        plt.ylabel("Position")
+        else:
+            plt.plot(self.angle, label="Angle", color="C3")
+            plt.xlabel("sample ($k$)")
+        plt.ylabel("Angle")
         plt.grid(True)
         plt.legend(loc="upper left")
         plt.tight_layout()
@@ -332,13 +421,14 @@ class IsoforcePy:
 
     def plot_torque(self):
         plt.figure(figsize=(12, 3))
-        plt.plot(self.time, self.torque, "C0", label=".torque")
-        plt.plot(self.time, self.torque_raw, "C5", lw=0.5, label=".torque_raw")
-
-        if self.over_UTC == False:
-            plt.xlabel("sample ($k$)")
-        else:
+        if self.over_UTC:
+            plt.plot(self.time, self.torque, "C0", label=".torque")
+            plt.plot(self.time, self.torque_raw, "C5", lw=0.5, label=".torque_raw")
             plt.xlabel("Time (UTC)")
+        else:
+            plt.plot(self.torque, "C0", label=".torque")
+            plt.plot(self.torque_raw, "C5", lw=0.5, label=".torque_raw")
+            plt.xlabel("sample ($k$)")
         plt.ylabel("Torque (Nm)")
         plt.grid(True)
         plt.legend(loc="upper left")
@@ -347,11 +437,12 @@ class IsoforcePy:
 
     def plot_speed(self):
         plt.figure(figsize=(12, 3))
-        plt.plot(self.time, self.speed, label="Speed", color="C8")
-        if self.over_UTC == False:
-            plt.xlabel("sample ($k$)")
-        else:
+        if self.over_UTC:
+            plt.plot(self.time, self.speed, label="Speed", color="C8")
             plt.xlabel("Time (UTC)")
+        else:
+            plt.plot(self.speed, label="Speed", color="C8")
+            plt.xlabel("sample ($k$)")
         plt.ylabel("Speed (°/s)")
         plt.grid(True)
         plt.legend(loc="upper left")
