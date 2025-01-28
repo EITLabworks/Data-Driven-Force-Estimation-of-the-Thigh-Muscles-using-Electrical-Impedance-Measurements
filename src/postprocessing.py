@@ -133,6 +133,12 @@ class IsoforceIso:
             self.angle = lowpass_filter(self.angle, cutoff=2, fs=400)
         else:
             self.torque_raw = torque_raw
+
+        date_part = self.DF[""][5].split("/")[1:]
+        time_part = self.DF[""][6].split("/")[1]
+        date_time_string = f"{date_part[2]}-{date_part[1]}-{date_part[0]} {time_part}"
+        self.date_time_iso = datetime.strptime(date_time_string, "%Y-%m-%d %H:%M:%S")
+
         # unused:
         # self.record = self.DF["Record"]
         # self.direction = self.DF["Direction"]
