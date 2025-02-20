@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import butter, filtfilt, find_peaks
 import os
+from os.path import join
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -64,10 +65,10 @@ class ProcessingDir:
 
     def get_paths(self):
         self.isoforce_iso = glob(self.path + "*.txt")[0]
-        self.isoforce_py_raw = self.path + "Isokinetic_raw/"
-        self.sciospec_EIT_raw = self.path + "EIT_raw/"
+        self.isoforce_py_raw = join(self.path, "iso_raw/")
+        self.sciospec_EIT_raw = join(self.path, "eit_raw/")
         self.EIT_samples_raw = glob(self.sciospec_EIT_raw + "2025*/setup/")[0]
-        self.s_path_eit = self.path + "EIT_processed/"
+        self.s_path_eit = join(self.path, "EIT_processed/")
 
     def print_info(self):
         print("Fund participant data:\n")

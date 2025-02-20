@@ -2,6 +2,7 @@ ethicapplication
 __pycache__
 .ipynb_checkpoints/
 engineering.ipynb
+develope.ipynb
 data/
 experiment_protocol.pdf
 drivers
