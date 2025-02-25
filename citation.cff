@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+title: >-
+  Data-Driven-Force-Estimation-of-the-Thigh-Muscles-using-Electrical-Impedance-Measurements
+message: >-
+  If you use the provided software or data, please cite it using the
+  metadata from this file.
+authors:
+  - given-names: Jacob P.
+    family-names: Thönes
+    email: jacob.thoenes@uni-rostock.de
+    affiliation: Universität Rostock (Institute of Communications Engineering)
+    orcid: 'https://orcid.org/0000-0003-2826-5281'
+  - given-names: Arash
+    family-names: Keshavarz
+    email: arash.keshavarz@uni-rostock.de
+    affiliation: Universität Rostock (Institute of Communications Engineering)
+url: 'https://github.com/EITLabworks/Data-Driven-Force-Estimation-of-the-Thigh-Muscles-using-Electrical-Impedance-Measurements'
+keywords:
+  - EIT
+  - ML
+license: MIT
+version: 0.1.0
+date-released: '2025-04'
