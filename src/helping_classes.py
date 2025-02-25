@@ -360,6 +360,7 @@ class IsoforcePy:
         idx = 0
         T_segment_dict = dict()
         A_segment_dict = dict()
+        ts_segment_dict = dict()
 
         # self.stop_idxs, _ = find_peaks(self.angle, distance=distance, height=height)
 
@@ -395,11 +396,17 @@ class IsoforcePy:
         for start, stop in zip(self.start_idxs, self.stop_idxs):
             T_segment_dict[f"T_seg_{idx}"] = self.torque[start:stop]
             A_segment_dict[f"A_seg_{idx}"] = self.angle[start:stop]
+
+            # timestapm segment
+            ts_segment = [dt.timestamp() for dt in self.time[start:stop]]
+            ts_segment_dict[f"ts_seg_{idx}"] = np.array(ts_segment)
+
             exclude_window[start:stop] = 1
             idx += 1
 
         self.angle_segments = A_segment_dict
         self.torque_segments = T_segment_dict
+        self.timestamp_segments = ts_segment_dict
         self.exclude_window = exclude_window
 
     def filter_torque(self):
