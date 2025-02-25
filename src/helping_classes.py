@@ -7,16 +7,12 @@ import matplotlib.pyplot as plt
 import json
 import os
 
-from scipy.signal import find_peaks
 
 import numpy as np
 
 from .postprocessing import (
     extract_timestamp_and_sample,
-    process_sciospec_eit,
     conv_array_float,
-    convert_timestamp,
-    renderDF,
     edge_detection,
     scale_to_range,
     lowpass_filter,

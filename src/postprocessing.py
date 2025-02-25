@@ -1,12 +1,10 @@
 import pandas as pd
 from glob import glob
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import butter, filtfilt
-import os
-from os.path import join
 import re
 from datetime import datetime
+from tqdm import tqdm
 
 from sciopy.doteit import convert_fulldir_doteit_to_npz
 
@@ -85,15 +83,15 @@ def conv_array_float(arr):
 ### Python data processing
 
 
-def process_sciospec_eit(part_path):
+def process_sciospec_eit(part_path, protocol):
 
     convert_fulldir_doteit_to_npz(part_path.EIT_samples_raw, part_path.s_path_eit)
 
     # convert_fulldir_doteit_to_npz(, )
-    skip = 5
-    n_el = 16
+    skip = protocol.EITmeasurement.injection_skip
+    n_el = protocol.EITmeasurement.n_el
 
-    for ele in glob(part_path.s_path_eit + "*.npz"):
+    for ele in tqdm(np.sort(glob(part_path.s_path_eit + "*.npz"))):
         tmp_eit = np.load(ele, allow_pickle=True)
 
         els = np.arange(1, n_el + 1)
