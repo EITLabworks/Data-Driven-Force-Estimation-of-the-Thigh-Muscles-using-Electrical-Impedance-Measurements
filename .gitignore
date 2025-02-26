@@ -1,12 +1,15 @@
 ethicapplication
 __pycache__
 .ipynb_checkpoints/
+Latex_imgs.ipynb
 engineering.ipynb
 develope.ipynb
 data/
 experiment_protocol.pdf
 drivers
 literature
-imgs
+imgs/*
+imgs/flowchart/*
+!imgs/flowchart/flowchart_gh.png
 measurements/
 unusedmeasurements/
