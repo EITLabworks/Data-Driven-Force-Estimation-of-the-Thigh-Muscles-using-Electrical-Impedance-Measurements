@@ -9,7 +9,6 @@ experiment_protocol.pdf
 drivers
 literature
 imgs/*
-imgs/flowchart/*
-!imgs/flowchart/flowchart_gh.png
+!imgs/flowchart_gh.png
 measurements/
 unusedmeasurements/

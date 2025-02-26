@@ -48,7 +48,7 @@ The settings of the EIT device are listed below.
 ## Postprocessing pipeline
 
 <p align="center">
-  <img src="imgs/flowchart/flowchart_gh.png" alt="Empty_mesh" width="650px">
+  <img src="imgs/flowchart_gh.png" alt="Flowchart" width="650px">
 </p>
 <p align="center" style="font-size: smaller;">
   <em>Fig. 1: Visualization post-processing.</em>
