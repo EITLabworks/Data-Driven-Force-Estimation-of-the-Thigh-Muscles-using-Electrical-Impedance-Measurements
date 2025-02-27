@@ -255,6 +255,7 @@ class IsoforcePy:
         over_UTC=False,
         scale_0_1=True,
         speed_window_trunc=True,
+        segment_len_threshold: int = 200,
         phase_shift=0,
     ):
         """
@@ -270,6 +271,7 @@ class IsoforcePy:
         self.LP_filter = LP_filter
         self.over_UTC = over_UTC
         self.speed_window_trunc = speed_window_trunc
+        self.segment_len_threshold = segment_len_threshold
         self.scale_0_1 = scale_0_1
         self.phase_shift = phase_shift
 
@@ -353,12 +355,16 @@ class IsoforcePy:
 
         assert len(angle) == len(torque) == len(speed)
         self.time = np.array(time)
+        self.timestamps = np.array([dt.timestamp() for dt in self.time])
 
     def export_segments(
-        self, distance=500, height=0.8, segment_len_threshold: int = 100
+        self,
+        distance=500,
+        height=0.8,
     ):
         idx = 0
         T_segment_dict = dict()
+        T_segment_raw_dict = dict()
         A_segment_dict = dict()
         ts_segment_dict = dict()
 
@@ -384,7 +390,7 @@ class IsoforcePy:
         # self.start_idxs = np.array(start_filt) - self.phase_shift
 
         # exclude all segments that are shorter than 300 sample (~3s)
-        len_mask = self.stop_idxs - self.start_idxs > segment_len_threshold
+        len_mask = self.stop_idxs - self.start_idxs > self.segment_len_threshold
         self.start_idxs = self.start_idxs[len_mask]
         self.stop_idxs = self.stop_idxs[len_mask]
 
@@ -395,6 +401,7 @@ class IsoforcePy:
         exclude_window = np.zeros(len(self.torque))
         for start, stop in zip(self.start_idxs, self.stop_idxs):
             T_segment_dict[f"T_seg_{idx}"] = self.torque[start:stop]
+            T_segment_raw_dict[f"T_seg_raw_{idx}"] = self.torque_raw[start:stop]
             A_segment_dict[f"A_seg_{idx}"] = self.angle[start:stop]
 
             # timestapm segment
@@ -406,6 +413,7 @@ class IsoforcePy:
 
         self.angle_segments = A_segment_dict
         self.torque_segments = T_segment_dict
+        self.torque_raw_segments = T_segment_raw_dict
         self.timestamp_segments = ts_segment_dict
         self.exclude_window = exclude_window
 
