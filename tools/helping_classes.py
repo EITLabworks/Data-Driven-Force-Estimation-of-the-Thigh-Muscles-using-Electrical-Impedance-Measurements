@@ -302,9 +302,9 @@ class IsoforcePy:
 
         for file_name in file_list:
             timestamp, sample_number = extract_timestamp_and_sample(file_name)
-            last_file_for_timestamp[
-                timestamp
-            ] = file_name  # Overwrite with the latest file
+            last_file_for_timestamp[timestamp] = (
+                file_name  # Overwrite with the latest file
+            )
 
         for timestamp, last_file in last_file_for_timestamp.items():
             file_path = os.path.join(self.path, last_file)
