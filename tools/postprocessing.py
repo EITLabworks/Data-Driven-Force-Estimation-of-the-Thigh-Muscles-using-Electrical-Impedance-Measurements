@@ -84,7 +84,6 @@ def conv_array_float(arr):
 
 
 def process_sciospec_eit(part_path, protocol):
-
     convert_fulldir_doteit_to_npz(part_path.EIT_samples_raw, part_path.s_path_eit)
 
     # convert_fulldir_doteit_to_npz(, )

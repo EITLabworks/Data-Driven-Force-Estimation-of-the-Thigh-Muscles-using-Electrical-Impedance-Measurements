@@ -54,7 +54,6 @@ def compute_TSNE(
     feature_label: str = "Feature",
     plot: bool = True,
 ):
-
     X_reshaped = X.reshape(X.shape[0], -1)
     X_reshaped = np.nan_to_num(X_reshaped)
 

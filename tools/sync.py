@@ -88,7 +88,6 @@ def sync_eit_ISO_segments(
         )
 
         if mode == "fast":
-
             sync_lst = list()
             for ts in tmp_ts_seg:
                 sync_lst.append(find_closest_index(times_eit, ts))

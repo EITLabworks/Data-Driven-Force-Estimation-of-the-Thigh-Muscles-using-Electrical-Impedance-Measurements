@@ -124,9 +124,9 @@ class ProcessingDir:
 
 
 class IsoforceIso:
-    def __init__(self, DF, LP_filter=False):
-
+    def __init__(self, DF, protocol: Protocol, LP_filter=False):
         self.DF = DF
+        self.protocol = protocol
         self.LP_filter = LP_filter
 
         self.init_data()
@@ -136,9 +136,16 @@ class IsoforceIso:
 
     def init_data(self):
         # read raw torque data
+
+        if self.protocol.Participant.leg == "left":
+            # self.angle = -1 * conv_array_float(self.DF["Angle"])
+            # self.speed = -1 * conv_array_float(self.DF["Velocity"])
+            torque_raw = -1 * conv_array_float(self.DF["Torque"])
+        elif self.protocol.Participant.leg == "right":
+            torque_raw = conv_array_float(self.DF["Torque"])
+
         self.angle = conv_array_float(self.DF["Angle"])
         self.speed = conv_array_float(self.DF["Velocity"])
-        torque_raw = conv_array_float(self.DF["Torque"])
         if self.LP_filter:
             print("!!!The torque data is lowpass filtered!!!")
             self.torque_raw = lowpass_filter(torque_raw)
@@ -295,9 +302,9 @@ class IsoforcePy:
 
         for file_name in file_list:
             timestamp, sample_number = extract_timestamp_and_sample(file_name)
-            last_file_for_timestamp[timestamp] = (
-                file_name  # Overwrite with the latest file
-            )
+            last_file_for_timestamp[
+                timestamp
+            ] = file_name  # Overwrite with the latest file
 
         for timestamp, last_file in last_file_for_timestamp.items():
             file_path = os.path.join(self.path, last_file)
@@ -323,14 +330,10 @@ class IsoforcePy:
             speed.extend(ch_3)
             time.extend(timestamps_expanded)
 
-        # if self.protocol.Participant.leg == "right":
-        #    self.angle = np.array(angle)
-        #    self.torque_raw = np.array(torque)
-        #    self.speed = np.array(speed)
-        # elif self.protocol.Participant.leg == "left":
-        #    self.angle = -1 * np.array(angle)
-        #    self.torque_raw = -1 * np.array(torque)
-        #    self.speed = -1 * np.array(speed)
+        if self.protocol.Participant.leg == "left":
+            angle = -1 * np.array(angle)
+            torque = -1 * np.array(torque)
+            speed = -1 * np.array(speed)
 
         # set class variables
         self.angle = np.array(angle)
