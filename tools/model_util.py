@@ -8,7 +8,7 @@ def z_score(data, print_info: bool = True):
         print("before:", np.mean(data), np.std(data))
 
     mean = np.mean(data)
-    std = np.mean(data)
+    std = np.std(data)
     data_z = (data - mean) / std
 
     if print_info:
