@@ -50,7 +50,8 @@ def load_data(
     returns:
     X ... EIT
     F ... Force
-    Y ... Torque
+    T ... Torque
+    A ... Angle (position)
     P ... Participant
     """
 
@@ -58,8 +59,9 @@ def load_data(
     if print_info:
         print("load:", P_str)
     X = list()
-    Y = list()  # Torque
+    T = list()  # Torque
     F = list()  # Force
+    A = list()  # Angle
     P = list()
 
     if z_score_norm == "global":
@@ -68,14 +70,16 @@ def load_data(
             for ele in np.sort(glob(join(l_path, "*.npz"))):
                 tmp = np.load(ele, allow_pickle=True)
                 X.append(tmp["EIT"])
-                Y.append(tmp["TORQUE"])
+                T.append(tmp["TORQUE"])
                 F.append(tmp["TORQUE"] / lever_arm[Ps])
+                A.append(tmp["ANGLE"])
                 P.append(Pn)
 
         X = np.abs(X)
         X = z_score(X, print_info)
-        Y = np.array(Y)
+        T = np.array(T)
         F = np.array(F)
+        A = np.array(A)
         P = np.array(P)
 
     elif z_score_norm == "participant":
@@ -85,15 +89,17 @@ def load_data(
             for ele in np.sort(glob(join(l_path, "*.npz"))):
                 tmp = np.load(ele, allow_pickle=True)
                 Xs.append(tmp["EIT"])
-                Y.append(tmp["TORQUE"])
+                T.append(tmp["TORQUE"])
                 F.append(tmp["TORQUE"] / lever_arm[Ps])
+                A.append(tmp["ANGLE"])
                 P.append(Pn)
             Xs = np.abs(Xs)
             Xs = z_score(Xs, print_info)
             X.append(Xs)
         X = np.concatenate(X)
-        Y = np.array(Y)
+        T = np.array(T)
         F = np.array(F)
+        A = np.array(A)
         P = np.array(P)
 
     elif z_score_norm == "participant_meanfree":
@@ -103,8 +109,9 @@ def load_data(
             for ele in np.sort(glob(join(l_path, "*.npz"))):
                 tmp = np.load(ele, allow_pickle=True)
                 Xs.append(tmp["EIT"])
-                Y.append(tmp["TORQUE"])
+                T.append(tmp["TORQUE"])
                 F.append(tmp["TORQUE"] / lever_arm[Ps])
+                A.append(tmp["ANGLE"])
                 P.append(Pn)
             Xs_mean = np.mean(Xs, axis=(0))
             Xs = Xs - Xs_mean
@@ -112,8 +119,9 @@ def load_data(
             Xs = z_score(Xs, print_info)
             X.append(Xs)
         X = np.concatenate(X)
-        Y = np.array(Y)
+        T = np.array(T)
         F = np.array(F)
+        A = np.array(A)
         P = np.array(P)
 
-    return X, F, Y, P
+    return X, T, F, A, P
