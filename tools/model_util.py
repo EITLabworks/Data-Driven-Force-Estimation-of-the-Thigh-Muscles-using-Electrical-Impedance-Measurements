@@ -50,8 +50,8 @@ def load_data(
 
     returns:
     X ... EIT
-    F ... Force
     T ... Torque
+    F ... Force
     A ... Angle (position)
     P ... Participant
     """
@@ -98,7 +98,7 @@ def load_data(
         F = np.array(F)
         A = np.array(A)
         P = np.array(P)
-        
+
     elif z_score_norm == "participant":
         for Pn, Ps in zip(P_nums, P_str):
             Xs = list()
