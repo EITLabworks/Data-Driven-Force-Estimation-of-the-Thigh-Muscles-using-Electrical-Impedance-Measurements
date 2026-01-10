@@ -44,6 +44,7 @@ def load_data(
     """
     z_score ... normalization
         - global
+        - None (type)
         - participant
         - participant_meanfree
 
@@ -82,6 +83,22 @@ def load_data(
         A = np.array(A)
         P = np.array(P)
 
+    elif z_score_norm == None:
+        for Pn, Ps in zip(P_nums, P_str):
+            l_path = join(path, Ps)
+            for ele in np.sort(glob(join(l_path, "*.npz"))):
+                tmp = np.load(ele, allow_pickle=True)
+                X.append(tmp["EIT"])
+                T.append(tmp["TORQUE"])
+                F.append(tmp["TORQUE"] / lever_arm[Ps])
+                A.append(tmp["ANGLE"])
+                P.append(Pn)
+        X = np.abs(X)
+        T = np.array(T)
+        F = np.array(F)
+        A = np.array(A)
+        P = np.array(P)
+        
     elif z_score_norm == "participant":
         for Pn, Ps in zip(P_nums, P_str):
             Xs = list()
