@@ -17,13 +17,17 @@ def sync_NI_PY_times(
     assert len(indices) == len(tmp_py_seg_raw) == len(tmp_ts_seg)
     sampled_iso = tmp_iso_seg[indices]
 
+    tmp_py_angle_raw = isoforce_iso.angle_segments[f"A_seg_{seg_idx}"]
+    samples_angle = tmp_py_angle_raw[indices]
+
     if plotting:
         plt.figure(figsize=(6, 2))
         plt.title(f"Segment index {seg_idx}")
         plt.plot(tmp_iso_seg, label="NI-iso")
         plt.plot(
-            indices_py_seg, tmp_py_seg_raw * 60, "--", c="C4", label="PY-iso (approx)"
+            indices_py_seg, tmp_py_seg_raw * 60, "--", c="C4", label="PY-iso (*60)"
         )
+        plt.plot(indices, samples_angle, "-.", c="C5", label="PY-Angle")
         plt.scatter(
             indices, sampled_iso, marker="x", s=20, c="C1", label="EIT timestamps"
         )
@@ -33,7 +37,7 @@ def sync_NI_PY_times(
         plt.xlabel("Segment time indices $k$")
         plt.grid()
         plt.show()
-    return tmp_ts_seg, sampled_iso
+    return tmp_ts_seg, sampled_iso, samples_angle
 
 
 def load_eit_npz(part_path):
@@ -75,6 +79,7 @@ def sync_eit_ISO_segments(
     eit_start_ts = 0
     EIT = list()
     TORQUE = list()
+    ANGLE = list()
     TS_iso = list()
     TS_eit = list()
 
@@ -83,7 +88,7 @@ def sync_eit_ISO_segments(
 
     print("Matching sequences...")
     for seg_idx in range(len(isoforce_iso.torque_segments.keys())):
-        tmp_ts_seg, sampled_iso = sync_NI_PY_times(
+        tmp_ts_seg, sampled_iso, sampled_pos = sync_NI_PY_times(
             isoforce_iso, isoforce_py, seg_idx, plotting
         )
 
@@ -124,7 +129,11 @@ def sync_eit_ISO_segments(
             eit_sync_seq = eit[eit_start_ts : eit_start_ts + len(tmp_ts_seg)]
             eit_ts_seq = times_eit[eit_start_ts : eit_start_ts + len(tmp_ts_seg)]
         assert (
-            len(eit_sync_seq) == len(tmp_ts_seg) == len(sampled_iso) == len(eit_ts_seq)
+            len(eit_sync_seq)
+            == len(tmp_ts_seg)
+            == len(sampled_iso)
+            == len(sampled_pos)
+            == len(eit_ts_seq)
         )
 
         # plt.figure(figsize=(6, 2))
@@ -134,12 +143,14 @@ def sync_eit_ISO_segments(
 
         EIT.append(eit_sync_seq)
         TORQUE.append(sampled_iso)
+        ANGLE.append(sampled_pos)
         TS_iso.append(tmp_ts_seg)
         TS_eit.append(eit_ts_seq)
 
     EIT = np.concatenate(EIT)
     TORQUE = np.concatenate(TORQUE)
+    ANGLE = np.concatenate(ANGLE)
     TS_iso = np.concatenate(TS_iso)
     TS_eit = np.concatenate(TS_eit)
 
-    return EIT, TORQUE, TS_iso, TS_eit
+    return EIT, TORQUE, ANGLE, TS_iso, TS_eit
